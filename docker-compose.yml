@@ -1,0 +1,75 @@
+networks:
+  app-net:
+    driver: bridge
+
+volumes:
+  n8n_data:
+    driver: local
+
+services:
+  # 1. Official Baidu PaddleOCR-VL-0.9B VLM Inference Server (NVIDIA GPU)
+  paddleocr-vl:
+    image: ccr-2vdh3abv-pub.cnc.bj.baidubce.com/paddlepaddle/paddleocr-genai-vllm-server:latest-nvidia-gpu
+    container_name: paddleocr-vl
+    command: paddleocr genai_server --model_name PaddleOCR-VL-0.9B --host 0.0.0.0 --port 8080 --backend vllm
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    networks:
+      - app-net
+
+  # 2. Enterprise AI Proxy (FastAPI Bridge to ITI Enterprise AI)
+  enterprise-proxy:
+    build:
+      context: .
+      dockerfile: proxy/Dockerfile
+    container_name: enterprise-proxy
+    env_file:
+      - .env
+    environment:
+      - ITI_API_KEY=${ITI_API_KEY}
+      - ITI_BASE_URL=${ITI_BASE_URL:-http://apiaccess.iti.net.eg/api/v1}
+      - PORT=${PORT:-8000}
+      - MAX_RETRIES=${MAX_RETRIES:-1}
+      - ALLOWED_MODELS=${ALLOWED_MODELS}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    networks:
+      - app-net
+
+  # 3. n8n Automation Engine (Exposed directly on Public Port 80)
+  n8n:
+    build:
+      context: .
+      dockerfile: n8n/Dockerfile
+    container_name: n8n
+    ports:
+      - "80:5678"
+    env_file:
+      - .env
+    environment:
+      - N8N_HOST=0.0.0.0
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - WEBHOOK_URL=http://${AZURE_VM_PUBLIC_IP:-localhost}
+      - N8N_WEBHOOK_URL=http://${AZURE_VM_PUBLIC_IP:-localhost}
+      - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY:-supersecretn8nkey12345}
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./workflow:/workflow:ro
+    restart: unless-stopped
+    depends_on:
+      enterprise-proxy:
+        condition: service_healthy
+    networks:
+      - app-net

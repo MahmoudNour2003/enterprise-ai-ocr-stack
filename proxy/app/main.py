@@ -1,0 +1,54 @@
+"""FastAPI Application Main Entrypoint."""
+
+from contextlib import asynccontextmanager
+from typing import AsyncGenerator
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse
+from proxy.app.client import iti_client
+from proxy.app.converter import format_openai_error
+from proxy.app.routes import router
+from proxy.app.settings import settings
+from proxy.app.utils import logger
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+    logger.info("Initializing ITI HTTP Client...")
+    await iti_client.start()
+    yield
+    logger.info("Closing ITI HTTP Client...")
+    await iti_client.close()
+
+
+app = FastAPI(
+    title="Enterprise AI Provider -> OpenAI Compatibility Server",
+    description="FastAPI service enabling OpenAI-compatible client access to ITI Enterprise AI Provider.",
+    version="1.0.0",
+    lifespan=lifespan,
+    docs_url="/docs",
+    redoc_url="/redoc",
+)
+
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    error_payload = format_openai_error(
+        message=str(exc.detail),
+        error_type="api_error" if exc.status_code >= 500 else "invalid_request_error",
+        code=str(exc.status_code),
+    )
+    return JSONResponse(status_code=exc.status_code, content=error_payload)
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    logger.error(f"Unhandled server error: {exc}", exc_info=True)
+    error_payload = format_openai_error(
+        message="An internal server error occurred.",
+        error_type="server_error",
+        code="500",
+    )
+    return JSONResponse(status_code=500, content=error_payload)
+
+
+app.include_router(router)

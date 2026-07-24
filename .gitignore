@@ -1,0 +1,16 @@
+# Environment Variables (Contains sensitive API keys)
+.env
+.env.local
+
+# Python Cache & Bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# n8n Storage & Data (Generated at runtime)
+n8n_data/
+.n8n/
+
+# Docker Local Storage
+*.log

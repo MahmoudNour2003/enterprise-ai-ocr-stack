@@ -1,0 +1,330 @@
+{
+  "name": "Invoice Extraction Workflow (Multi-Format & OCR)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "d11ede0e-9d6f-4b45-8ba7-bd833c8df652",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -200,
+        -100
+      ],
+      "id": "501a8482-73cd-4bfa-881e-84e5896d5a12",
+      "name": "Webhook",
+      "webhookId": "d11ede0e-9d6f-4b45-8ba7-bd833c8df652",
+      "executeOnce": false
+    },
+    {
+      "parameters": {
+        "mode": "rules",
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $binary.file.mimeType }}",
+                    "rightValue": "image/",
+                    "operator": {
+                      "type": "string",
+                      "operation": "startsWith"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Image Document"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $binary.file.mimeType }}",
+                    "rightValue": "application/pdf",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "PDF Document"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        50,
+        -100
+      ],
+      "id": "7f14b620-8910-449e-b98a-36015b6727ab",
+      "name": "Check File Type"
+    },
+    {
+      "parameters": {
+        "operation": "pdf",
+        "binaryPropertyName": "file",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1.1,
+      "position": [
+        300,
+        0
+      ],
+      "id": "e045cdc1-eb61-4758-8817-b35c00c037ae",
+      "name": "Extract from PDF",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ ($json.text || '').length }}",
+              "rightValue": 50,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        550,
+        0
+      ],
+      "id": "2c918342-9dfb-402a-a92a-79659b8120fa",
+      "name": "Is Digital PDF?"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://paddleocr-vl:8080/v1/chat/completions",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "file",
+              "parameterType": "formBinaryData",
+              "inputDataFieldName": "file"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        550,
+        -200
+      ],
+      "id": "40abf210-908a-4467-93ab-41c3bf7e21a1",
+      "name": "PaddleOCR-VL Service"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Extract the invoice into a JSON object with vendorName, invoiceNumber, invoiceDate, subtotal, vat, total, and items:\n\n{{ $json.text || $json.output || $json.body }}",
+        "options": {
+          "systemMessage": "=You are an expert invoice extraction engine.\n\nYour task is to extract ALL header fields and line items matching the JSON schema.\n\nCRITICAL AGENT INSTRUCTION:\nYou MUST start your response with \"Final Answer:\" followed immediately by the JSON object.\n\n### MANDATORY SCHEMA STRUCTURE EXAMPLE:\n\nINPUT TEXT:\nشركة تكنولوجيا السرعة\nرقم الفاتورة: 2602506000004\nتاريخ الفاتورة: 2026-06-25\nالعملة: SAR\nالمجموع الخاضع للضريبة: 4603.62\nضريبة القيمة المضافة: 690.54\nالإجمالي: 5294.16\n10711 معمول اصابع مغطي بالشوكولاتة 5 11.00 63.25\n\nEXPECTED OUTPUT:\nFinal Answer:\n{\n  \"vendorName\": \"شركة تكنولوجيا السرعة - تكنولوجيا السرعة\",\n  \"invoiceNumber\": \"2602506000004\",\n  \"invoiceDate\": \"2026-06-25\",\n  \"currency\": \"SAR\",\n  \"subtotal\": 4603.62,\n  \"vat\": 690.54,\n  \"total\": 5294.16,\n  \"items\": [\n    {\n      \"supplierSku\": \"10711\",\n      \"description\": \"معمول اصابع مغطي بالشوكولاتة و المكسرات *12\",\n      \"quantity\": 5,\n      \"unitPrice\": 11.0,\n      \"amount\": 63.25\n    }\n  ]\n}\n\n### CRITICAL RULES:\n1. Start your response with \"Final Answer:\" followed immediately by the JSON object.\n2. You MUST include ALL 8 root fields: vendorName, invoiceNumber, invoiceDate, currency, subtotal, vat, total, AND items.\n3. For EVERY item in \"items\", you MUST include ALL 5 fields: supplierSku, description, quantity, unitPrice, AND amount.\n4. Extract numeric values for quantity, unitPrice, and amount for every table row.\n5. Do NOT add conversational preambles, explanations, or extra text after the JSON."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        850,
+        -100
+      ],
+      "id": "e5624152-7ee3-4a51-987a-ce482a01d055",
+      "name": "AI Agent",
+      "retryOnFail": false
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json.output }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1100,
+        -100
+      ],
+      "id": "00715ea1-64b3-4767-9887-f89a7434afa3",
+      "name": "Respond to Webhook"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "openai.gpt-oss-120b-1:0",
+          "mode": "list",
+          "cachedResultName": "openai.gpt-oss-120b-1:0"
+        },
+        "builtInTools": {},
+        "options": {
+          "temperature": 0
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        850,
+        100
+      ],
+      "id": "b320ea47-0104-43c4-be12-0510beafd2f9",
+      "name": "OpenAI Chat Model",
+      "credentials": {
+        "openAiApi": {
+          "id": "mH6mjyYZe0GlL3ZW",
+          "name": "OpenAI account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Check File Type",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check File Type": {
+      "main": [
+        [
+          {
+            "node": "PaddleOCR-VL Service",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Extract from PDF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract from PDF": {
+      "main": [
+        [
+          {
+            "node": "Is Digital PDF?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Digital PDF?": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "PaddleOCR-VL Service",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PaddleOCR-VL Service": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "58e082a2-c8c5-4b6c-a260-cc6330fda065",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "b996d1aafc09e2b3cce99f934feae8cf4f7cfe72741768fcaaba29e06d007604"
+  },
+  "nodeGroups": [],
+  "id": "1axMBaO7or9ssM1U",
+  "tags": []
+}
