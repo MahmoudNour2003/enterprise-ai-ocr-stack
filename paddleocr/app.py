@@ -19,7 +19,6 @@ ocr = PaddleOCR(
     lang="ar",
     enable_mkldnn=False,
     det_limit_side_len=960,
-    max_batch_size=4,
 )
 
 
