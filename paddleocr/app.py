@@ -13,8 +13,25 @@ from paddleocr import PaddleOCR
 
 app = FastAPI(title="PaddleOCR CPU Service")
 
-# Initialize PaddleOCR with Arabic & English support and enable_mkldnn=False to fix CPU OneDNN bug
-ocr = PaddleOCR(use_angle_cls=True, lang="ar", enable_mkldnn=False)
+# Initialize PaddleOCR with memory optimization (det_limit_side_len=960 caps max side length)
+ocr = PaddleOCR(
+    use_angle_cls=True,
+    lang="ar",
+    enable_mkldnn=False,
+    det_limit_side_len=960,
+    max_batch_size=4,
+)
+
+
+def resize_image_if_large(img: Image.Image, max_dim: int = 1920) -> Image.Image:
+    """Proportionally resizes large images to prevent excessive memory allocation."""
+    w, h = img.size
+    if max(w, h) > max_dim:
+        scale = max_dim / float(max(w, h))
+        new_w = int(w * scale)
+        new_h = int(h * scale)
+        return img.resize((new_w, new_h), Image.Resampling.LANCZOS)
+    return img
 
 
 @app.get("/health")
@@ -30,13 +47,14 @@ async def process_document(file: UploadFile = File(...)):
     text_results = []
 
     try:
-        # If PDF: Render pages to images using PyMuPDF
+        # If PDF: Render pages to images using PyMuPDF at optimized 150 DPI
         if filename.endswith(".pdf") or file.content_type == "application/pdf":
             doc = fitz.open(stream=content, filetype="pdf")
             for page_index in range(len(doc)):
                 page = doc[page_index]
-                pix = page.get_pixmap(dpi=200)
+                pix = page.get_pixmap(dpi=150)
                 img = Image.open(io.BytesIO(pix.tobytes("png")))
+                img = resize_image_if_large(img)
                 img_np = np.array(img.convert("RGB"))
 
                 result = ocr.ocr(img_np)
@@ -48,6 +66,7 @@ async def process_document(file: UploadFile = File(...)):
         else:
             # If Image (PNG/JPG): Run OCR directly
             img = Image.open(io.BytesIO(content))
+            img = resize_image_if_large(img)
             img_np = np.array(img.convert("RGB"))
             result = ocr.ocr(img_np)
             if result and result[0]:
