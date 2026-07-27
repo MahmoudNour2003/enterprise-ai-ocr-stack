@@ -13,7 +13,7 @@ from paddleocr import PaddleOCR
 
 app = FastAPI(title="PaddleOCR CPU Service")
 
-# Initialize PaddleOCR with golden sweet spot parameters (960px det_limit_side_len prevents memory spikes)
+# Initialize PaddleOCR with lang="ar" and det_limit_side_len=960
 ocr = PaddleOCR(
     use_angle_cls=False,
     lang="ar",
@@ -33,6 +33,56 @@ def resize_image_if_large(img: Image.Image, max_dim: int = 1920) -> Image.Image:
     return img
 
 
+def group_ocr_lines_horizontally(ocr_result, y_threshold: int = 15) -> str:
+    """Sorts and groups OCR bounding boxes into horizontal lines.
+
+    Stitches individual characters/words on the same Y-level into complete
+    sentences.
+    """
+    if not ocr_result or not ocr_result[0]:
+        return ""
+
+    boxes_text = []
+    for item in ocr_result[0]:
+        if not item or len(item) < 2:
+            continue
+        box, (text, score) = item[0], item[1]
+        text_str = text.strip()
+        if not text_str:
+            continue
+        # Top-left Y and X coordinates
+        y_top = box[0][1]
+        x_left = box[0][0]
+        boxes_text.append({"x": x_left, "y": y_top, "text": text_str})
+
+    if not boxes_text:
+        return ""
+
+    # Sort boxes by Y coordinate first
+    boxes_text.sort(key=lambda b: b["y"])
+
+    # Group boxes into lines based on Y coordinate threshold
+    lines = []
+    current_line = [boxes_text[0]]
+
+    for box in boxes_text[1:]:
+        if abs(box["y"] - current_line[0]["y"]) < y_threshold:
+            current_line.append(box)
+        else:
+            # Sort current line boxes by X coordinate (left to right)
+            current_line.sort(key=lambda b: b["x"])
+            line_str = " ".join([b["text"] for b in current_line])
+            lines.append(line_str)
+            current_line = [box]
+
+    if current_line:
+        current_line.sort(key=lambda b: b["x"])
+        line_str = " ".join([b["text"] for b in current_line])
+        lines.append(line_str)
+
+    return "\n".join(lines)
+
+
 @app.get("/health")
 def health():
     return {"status": "healthy", "service": "PaddleOCR CPU ready"}
@@ -46,7 +96,7 @@ async def process_document(file: UploadFile = File(...)):
     text_results = []
 
     try:
-        # If PDF: Render pages to images using PyMuPDF at golden 200 DPI
+        # If PDF: Render pages to images using PyMuPDF at 200 DPI
         if filename.endswith(".pdf") or file.content_type == "application/pdf":
             doc = fitz.open(stream=content, filetype="pdf")
             for page_index in range(len(doc)):
@@ -57,14 +107,10 @@ async def process_document(file: UploadFile = File(...)):
                 img_np = np.array(img.convert("RGB"))
 
                 result = ocr.ocr(img_np)
-                if result and result[0]:
-                    lines = [
-                        line[1][0].strip()
-                        for line in result[0]
-                        if line and len(line) > 1 and line[1][0].strip()
-                    ]
+                page_text = group_ocr_lines_horizontally(result)
+                if page_text:
                     text_results.append(
-                        f"--- PAGE {page_index + 1} ---\n" + "\n".join(lines)
+                        f"--- PAGE {page_index + 1} ---\n" + page_text
                     )
         else:
             # If Image (PNG/JPG): Run OCR directly
@@ -72,13 +118,9 @@ async def process_document(file: UploadFile = File(...)):
             img = resize_image_if_large(img)
             img_np = np.array(img.convert("RGB"))
             result = ocr.ocr(img_np)
-            if result and result[0]:
-                lines = [
-                    line[1][0].strip()
-                    for line in result[0]
-                    if line and len(line) > 1 and line[1][0].strip()
-                ]
-                text_results.append("\n".join(lines))
+            page_text = group_ocr_lines_horizontally(result)
+            if page_text:
+                text_results.append(page_text)
 
         full_text = "\n\n".join(text_results).strip()
         return {"text": full_text, "output": full_text}
