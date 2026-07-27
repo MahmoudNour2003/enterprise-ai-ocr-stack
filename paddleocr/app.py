@@ -1,14 +1,20 @@
 import io
+import os
 import fitz  # PyMuPDF for PDF page rendering
 from fastapi import FastAPI, File, UploadFile, HTTPException
 from PIL import Image
 import numpy as np
+
+# Disable buggy OneDNN / PIR executor conversion on CPU
+os.environ["FLAGS_enable_pir_api"] = "0"
+os.environ["FLAGS_use_onednn"] = "0"
+
 from paddleocr import PaddleOCR
 
 app = FastAPI(title="PaddleOCR CPU Service")
 
-# Initialize PaddleOCR with Arabic & English support and angle auto-classification
-ocr = PaddleOCR(use_angle_cls=True, lang="ar")
+# Initialize PaddleOCR with Arabic & English support and enable_mkldnn=False to fix CPU OneDNN bug
+ocr = PaddleOCR(use_angle_cls=True, lang="ar", enable_mkldnn=False)
 
 
 @app.get("/health")
