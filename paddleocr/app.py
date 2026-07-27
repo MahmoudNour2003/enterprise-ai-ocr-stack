@@ -13,14 +13,13 @@ from paddleocr import PaddleOCR
 
 app = FastAPI(title="PaddleOCR Maximum Coverage CPU Service")
 
-# Initialize PaddleOCR with high-sensitivity detection thresholds to capture ALL faint/small text
+# Initialize PaddleOCR with high-sensitivity detection thresholds to capture ALL text
 ocr = PaddleOCR(
     use_angle_cls=False,
     lang="ar",
     enable_mkldnn=False,
     det_db_thresh=0.2,
     det_db_box_thresh=0.5,
-    unclip_ratio=2.0,
     det_limit_side_len=1280,
 )
 
