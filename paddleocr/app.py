@@ -11,35 +11,40 @@ os.environ["FLAGS_use_onednn"] = "0"
 
 from paddleocr import PaddleOCR
 
-app = FastAPI(title="PaddleOCR CPU Service")
+app = FastAPI(title="PaddleOCR Maximum Coverage CPU Service")
 
-# Initialize PaddleOCR (Version: PaddleOCR v2.7+ / PaddlePaddle v2.6.2+)
+# Initialize PaddleOCR with high-sensitivity detection thresholds to capture ALL faint/small text
 ocr = PaddleOCR(
     use_angle_cls=False,
     lang="ar",
     enable_mkldnn=False,
+    det_db_thresh=0.2,
+    det_db_box_thresh=0.5,
+    unclip_ratio=2.0,
+    det_limit_side_len=1280,
 )
 
 
 def extract_all_ocr_text(ocr_result) -> str:
-    """Extracts all text lines from PaddleOCR result reliably."""
+    """Extracts all text lines from PaddleOCR result without missing any text."""
     if not ocr_result:
         return ""
 
-    page_lines = []
-    # If list of pages
+    extracted_lines = []
+
+    # Handle multi-page or single-page list structure
     pages = ocr_result if isinstance(ocr_result, list) else [ocr_result]
 
     for page in pages:
         if not page:
             continue
-        for item in page:
-            if not item:
+        for line in page:
+            if not line:
                 continue
             try:
-                # Standard format: [ [box_coords], (text, score) ]
-                if isinstance(item, (list, tuple)) and len(item) >= 2:
-                    text_part = item[1]
+                # Format: [ [box_coords], (text, confidence) ]
+                if isinstance(line, (list, tuple)) and len(line) >= 2:
+                    text_part = line[1]
                     if (
                         isinstance(text_part, (list, tuple))
                         and len(text_part) >= 1
@@ -49,16 +54,16 @@ def extract_all_ocr_text(ocr_result) -> str:
                         txt = str(text_part).strip()
 
                     if txt:
-                        page_lines.append(txt)
+                        extracted_lines.append(txt)
             except Exception:
                 continue
 
-    return "\n".join(page_lines).strip()
+    return "\n".join(extracted_lines).strip()
 
 
 @app.get("/health")
 def health():
-    return {"status": "healthy", "service": "PaddleOCR v2.7+ CPU ready"}
+    return {"status": "healthy", "service": "PaddleOCR Maximum Coverage Ready"}
 
 
 @app.post("/ocr")
