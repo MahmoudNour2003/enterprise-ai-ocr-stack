@@ -1,6 +1,6 @@
 # Multi-Format Invoice Extraction Stack (PaddleOCR-VL + Enterprise Proxy + n8n)
 
-A production-ready Dockerized architecture deployed on an Azure GPU VM that processes **Digital PDFs**, **Scanned PDFs**, and **Scanned Images (PNG/JPG)** using **PaddleOCR-VL-0.9B (GPU-Accelerated)** and **ITI Enterprise AI Provider**.
+A production-ready Dockerized architecture deployed on Azure VM (CPU Optimized) that processes **Digital PDFs**, **Scanned PDFs**, and **Scanned Images (PNG/JPG)** using **PaddleOCR-VL-0.9B** and **ITI Enterprise AI Provider**.
 
 ---
 
@@ -17,12 +17,12 @@ n8n Container (Port 80)
         │     ├── Image (PNG/JPG) ──────────────────────────┐
         │     └── PDF (application/pdf) ─► Extract PDF Text │
         │                                       │           │
-        │                                 Text > 50?        │
+        │                                 Text > 100?       │
         │                                ├── Yes (Digital) ─┼──► AI Agent (LLM)
         │                                └── No (Scanned) ──┤
         │                                                   │
         ▼                                                   │
-PaddleOCR-VL-0.9B Container (vLLM GPU Port 8080) ───────────┘
+PaddleOCR-VL-0.9B Container (CPU Port 8080) ────────────────┘
   └── Runs high-precision OCR on scanned PDFs & Images
         │
         ▼ (Extracted Text)
@@ -44,35 +44,25 @@ Return Standard Invoice JSON Object
 ### Step 1: Azure VM Provisioning
 When creating your VM in Azure Portal:
 - **OS**: Ubuntu 22.04 LTS
-- **Size**: **NVIDIA GPU VM** (e.g., `Standard_NC4as_T4_v3` with 1x NVIDIA T4 GPU)
-- **Networking**: Inbound Security Group Rule -> Allow Port `80` (HTTP)
+- **VM Size**: **`Standard_D4s_v4`** or **`Standard_D4s_v5`** (4 vCPUs, 16GB RAM)
+- **Region**: `East US` (or `North Europe` / `West Europe`)
+- **Availability Options**: `No infrastructure redundancy required`
+- **Networking**: Inbound Security Group Rule -> Allow Port `80` (HTTP) & Port `22` (SSH)
 
 ---
 
-### Step 2: Install GPU Drivers & NVIDIA Container Toolkit on Azure VM
+### Step 2: Install Docker on Azure VM
 
 SSH into your Azure VM:
 ```bash
-ssh azureuser@<AZURE_VM_PUBLIC_IP>
+ssh azureuser@<YOUR_AZURE_VM_PUBLIC_IP>
 ```
 
-Run the initialization script:
+Install Docker & Docker Compose:
 ```bash
-# 1. Update and install Docker
 sudo apt update && sudo apt install -y docker.io docker-compose-v2 git
 sudo usermod -aG docker $USER
 newgrp docker
-
-# 2. Install NVIDIA Container Toolkit
-curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
-curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | \
-  sed 's#deb [^ ]*#& [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg]#' | \
-  sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
-
-sudo apt-get update
-sudo apt-get install -y nvidia-container-toolkit
-sudo nvidia-ctk runtime configure --runtime=docker
-sudo systemctl restart docker
 ```
 
 ---
