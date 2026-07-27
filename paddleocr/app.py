@@ -34,7 +34,7 @@ def resize_image_if_large(img: Image.Image, max_dim: int = 1920) -> Image.Image:
 
 
 def group_ocr_lines_horizontally(ocr_result, y_threshold: int = 15) -> str:
-    """Sorts and groups OCR bounding boxes into horizontal lines.
+    """Defensively sorts and groups OCR bounding boxes into horizontal lines.
 
     Stitches individual characters/words on the same Y-level into complete
     sentences.
@@ -44,16 +44,34 @@ def group_ocr_lines_horizontally(ocr_result, y_threshold: int = 15) -> str:
 
     boxes_text = []
     for item in ocr_result[0]:
-        if not item or len(item) < 2:
+        if not item:
             continue
-        box, (text, score) = item[0], item[1]
-        text_str = text.strip()
-        if not text_str:
+        try:
+            if len(item) >= 2 and isinstance(item[0], list):
+                box = item[0]
+                text_info = item[1]
+                text_str = (
+                    text_info[0]
+                    if isinstance(text_info, (list, tuple))
+                    else str(text_info)
+                )
+                y_top = box[0][1] if len(box) > 0 and len(box[0]) > 1 else 0
+                x_left = box[0][0] if len(box) > 0 and len(box[0]) > 0 else 0
+            elif (
+                isinstance(item, (list, tuple))
+                and len(item) >= 2
+                and isinstance(item[0], str)
+            ):
+                text_str = item[0]
+                y_top, x_left = 0, 0
+            else:
+                continue
+
+            text_clean = str(text_str).strip()
+            if text_clean:
+                boxes_text.append({"x": x_left, "y": y_top, "text": text_clean})
+        except Exception:
             continue
-        # Top-left Y and X coordinates
-        y_top = box[0][1]
-        x_left = box[0][0]
-        boxes_text.append({"x": x_left, "y": y_top, "text": text_str})
 
     if not boxes_text:
         return ""
