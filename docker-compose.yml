@@ -35,7 +35,7 @@ services:
       - ITI_API_KEY=${ITI_API_KEY}
       - ITI_BASE_URL=${ITI_BASE_URL:-http://apiaccess.iti.net.eg/api/v1}
       - PORT=${PORT:-8000}
-      - MAX_RETRIES=${MAX_RETRIES:-1}
+      - MAX_RETRIES=${MAX_RETRIES:-3}
       - ALLOWED_MODELS=${ALLOWED_MODELS}
     restart: unless-stopped
     healthcheck:

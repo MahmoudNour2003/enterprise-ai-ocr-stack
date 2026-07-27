@@ -37,8 +37,9 @@ class ITIClient:
         if not self.client:
             await self.start()
 
-        max_attempts = max(1, settings.max_retries)
-        backoff_delay = 1.0
+        # Guarantee at least 3 retry attempts for remote ITI server stability
+        max_attempts = max(3, settings.max_retries)
+        backoff_delay = 1.5
         start_time = time.perf_counter()
         model_id = payload.get("model_id", "unknown")
         request_id = "pending"
@@ -63,7 +64,7 @@ class ITIClient:
 
                 if response.status_code >= 500 or response.status_code == 429:
                     logger.warning(
-                        f"ITI API returned status {response.status_code} on attempt {attempt}/{max_attempts}."
+                        f"ITI API returned status {response.status_code} on attempt {attempt}/{max_attempts}. Retrying in {backoff_delay}s..."
                     )
                     if attempt < max_attempts:
                         await asyncio.sleep(backoff_delay)
@@ -94,6 +95,9 @@ class ITIClient:
             except (httpx.TransportError, httpx.TimeoutException) as exc:
                 latency_ms = (time.perf_counter() - start_time) * 1000.0
                 last_exception = exc
+                logger.warning(
+                    f"Transport error on attempt {attempt}/{max_attempts}: {exc}. Retrying in {backoff_delay}s..."
+                )
                 if attempt < max_attempts:
                     await asyncio.sleep(backoff_delay)
                     backoff_delay *= 2.0
