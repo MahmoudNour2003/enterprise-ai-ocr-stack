@@ -18,7 +18,6 @@ ocr = PaddleOCR(
     use_angle_cls=False,
     lang="ar",
     enable_mkldnn=False,
-    show_log=False,
 )
 
 
