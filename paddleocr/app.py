@@ -3,7 +3,7 @@ import logging
 import os
 import fitz  # PyMuPDF for PDF page rendering
 from fastapi import FastAPI, File, UploadFile, HTTPException
-from PIL import Image, ImageEnhance
+from PIL import Image
 import numpy as np
 
 logging.basicConfig(level=logging.INFO)
@@ -17,9 +17,8 @@ from paddleocr import PaddleOCR
 
 app = FastAPI(title="PaddleOCR Service")
 
-# Initialize PaddleOCR
+# Initialize PaddleOCR 2.7+
 ocr = PaddleOCR(lang="ar", enable_mkldnn=False)
-ocr_en = PaddleOCR(lang="en", enable_mkldnn=False)
 
 
 def prepare_rgb_image(img: Image.Image) -> Image.Image:
@@ -41,42 +40,50 @@ def prepare_rgb_image(img: Image.Image) -> Image.Image:
 
 
 def parse_paddle_output(result) -> str:
-    """Parses all text lines from PaddleOCR output reliably."""
+    """Parses all text lines from PaddleOCR 2.7+ prediction result dictionary."""
     if not result:
         return ""
 
     lines = []
+    # If list of prediction dictionaries
     pages = result if isinstance(result, list) else [result]
 
     for page in pages:
         if not page:
             continue
-        for line in page:
-            if not line:
-                continue
-            try:
-                if isinstance(line, (list, tuple)) and len(line) >= 2:
-                    text_info = line[1]
-                    if (
-                        isinstance(text_info, (list, tuple))
-                        and len(text_info) >= 1
-                    ):
-                        txt = str(text_info[0]).strip()
-                    else:
-                        txt = str(text_info).strip()
 
-                    if txt:
-                        lines.append(txt)
-            except Exception as e:
-                logger.error(f"Error parsing line: {e}")
-                continue
+        # PaddleOCR 2.7+ / PaddleX dict format: page['rec_texts']
+        if isinstance(page, dict) and "rec_texts" in page:
+            for text in page["rec_texts"]:
+                txt_str = str(text).strip()
+                if txt_str:
+                    lines.append(txt_str)
+        elif isinstance(page, list):
+            # Fallback legacy format: [ [box], (text, score) ]
+            for line in page:
+                if not line:
+                    continue
+                try:
+                    if isinstance(line, (list, tuple)) and len(line) >= 2:
+                        text_info = line[1]
+                        if (
+                            isinstance(text_info, (list, tuple))
+                            and len(text_info) >= 1
+                        ):
+                            txt = str(text_info[0]).strip()
+                        else:
+                            txt = str(text_info).strip()
+                        if txt:
+                            lines.append(txt)
+                except Exception:
+                    continue
 
     return "\n".join(lines).strip()
 
 
 @app.get("/health")
 def health():
-    return {"status": "healthy", "service": "PaddleOCR ready"}
+    return {"status": "healthy", "service": "PaddleOCR 2.7+ ready"}
 
 
 @app.post("/ocr")
@@ -103,24 +110,15 @@ async def process_document(file: UploadFile = File(...)):
             for page_index in range(len(doc)):
                 page = doc[page_index]
 
-                # Render page at crisp 200 DPI
+                # Render page at 200 DPI
                 pix = page.get_pixmap(dpi=200)
                 raw_img = Image.open(io.BytesIO(pix.tobytes("png")))
                 rgb_img = prepare_rgb_image(raw_img)
                 img_np = np.array(rgb_img)
 
-                # Run Arabic OCR
-                res = ocr.ocr(img_np)
+                # Run PaddleOCR predict
+                res = ocr.predict(img_np)
                 txt = parse_paddle_output(res)
-
-                # If Arabic model extracted 0 chars, try English OCR model as fallback
-                if not txt:
-                    logger.info(
-                        f"Page {page_index + 1}: Trying English OCR fallback..."
-                    )
-                    res_en = ocr_en.ocr(img_np)
-                    txt = parse_paddle_output(res_en)
-
                 logger.info(
                     f"Page {page_index + 1} extracted {len(txt)} chars"
                 )
@@ -133,17 +131,12 @@ async def process_document(file: UploadFile = File(...)):
             logger.info("Processing document as Image...")
             raw_img = Image.open(io.BytesIO(content))
             rgb_img = prepare_rgb_image(raw_img)
-            img_np = np.array(rgb_img)
+            img_np = np.array(img.convert("RGB"))
 
-            res = ocr.ocr(img_np)
+            res = ocr.predict(img_np)
             txt = parse_paddle_output(res)
-
-            if not txt:
-                logger.info("Trying English OCR fallback...")
-                res_en = ocr_en.ocr(img_np)
-                txt = parse_paddle_output(res_en)
-
             logger.info(f"Image extracted {len(txt)} chars")
+
             if txt:
                 text_results.append(txt)
 
