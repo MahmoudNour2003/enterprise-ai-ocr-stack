@@ -3,7 +3,7 @@ import logging
 import os
 import fitz  # PyMuPDF for PDF page rendering
 from fastapi import FastAPI, File, UploadFile, HTTPException
-from PIL import Image
+from PIL import Image, ImageEnhance
 import numpy as np
 
 logging.basicConfig(level=logging.INFO)
@@ -17,8 +17,27 @@ from paddleocr import PaddleOCR
 
 app = FastAPI(title="PaddleOCR Service")
 
-# Standard official PaddleOCR initialization (Arabic + English + Numbers)
+# Initialize PaddleOCR
 ocr = PaddleOCR(lang="ar", enable_mkldnn=False)
+ocr_en = PaddleOCR(lang="en", enable_mkldnn=False)
+
+
+def prepare_rgb_image(img: Image.Image) -> Image.Image:
+    """Safely converts RGBA/transparent images to RGB with a solid white background.
+
+    Prevents transparent PDF page scans from turning into solid black images.
+    """
+    if img.mode in ("RGBA", "LA") or (
+        img.mode == "P" and "transparency" in img.info
+    ):
+        try:
+            alpha = img.convert("RGBA").split()[-1]
+            bg = Image.new("RGB", img.size, (255, 255, 255))
+            bg.paste(img, mask=alpha)
+            return bg
+        except Exception:
+            return img.convert("RGB")
+    return img.convert("RGB")
 
 
 def parse_paddle_output(result) -> str:
@@ -27,7 +46,6 @@ def parse_paddle_output(result) -> str:
         return ""
 
     lines = []
-    # If list of pages or single page
     pages = result if isinstance(result, list) else [result]
 
     for page in pages:
@@ -37,7 +55,6 @@ def parse_paddle_output(result) -> str:
             if not line:
                 continue
             try:
-                # Format: [ [box_coords], (text, confidence) ]
                 if isinstance(line, (list, tuple)) and len(line) >= 2:
                     text_info = line[1]
                     if (
@@ -72,7 +89,6 @@ async def process_document(file: UploadFile = File(...)):
     text_results = []
 
     try:
-        # Check if file is PDF (by extension or binary header %PDF)
         is_pdf = (
             filename.lower().endswith(".pdf")
             or (file.content_type and "pdf" in file.content_type.lower())
@@ -87,14 +103,24 @@ async def process_document(file: UploadFile = File(...)):
             for page_index in range(len(doc)):
                 page = doc[page_index]
 
-                # Render page at 200 DPI
+                # Render page at crisp 200 DPI
                 pix = page.get_pixmap(dpi=200)
-                img = Image.open(io.BytesIO(pix.tobytes("png")))
-                img_np = np.array(img.convert("RGB"))
+                raw_img = Image.open(io.BytesIO(pix.tobytes("png")))
+                rgb_img = prepare_rgb_image(raw_img)
+                img_np = np.array(rgb_img)
 
-                # Run PaddleOCR
+                # Run Arabic OCR
                 res = ocr.ocr(img_np)
                 txt = parse_paddle_output(res)
+
+                # If Arabic model extracted 0 chars, try English OCR model as fallback
+                if not txt:
+                    logger.info(
+                        f"Page {page_index + 1}: Trying English OCR fallback..."
+                    )
+                    res_en = ocr_en.ocr(img_np)
+                    txt = parse_paddle_output(res_en)
+
                 logger.info(
                     f"Page {page_index + 1} extracted {len(txt)} chars"
                 )
@@ -105,13 +131,19 @@ async def process_document(file: UploadFile = File(...)):
                     )
         else:
             logger.info("Processing document as Image...")
-            img = Image.open(io.BytesIO(content))
-            img_np = np.array(img.convert("RGB"))
+            raw_img = Image.open(io.BytesIO(content))
+            rgb_img = prepare_rgb_image(raw_img)
+            img_np = np.array(rgb_img)
 
             res = ocr.ocr(img_np)
             txt = parse_paddle_output(res)
-            logger.info(f"Image extracted {len(txt)} chars")
 
+            if not txt:
+                logger.info("Trying English OCR fallback...")
+                res_en = ocr_en.ocr(img_np)
+                txt = parse_paddle_output(res_en)
+
+            logger.info(f"Image extracted {len(txt)} chars")
             if txt:
                 text_results.append(txt)
 
