@@ -9,10 +9,17 @@ volumes:
 services:
   # 1. PaddleOCR Inference Service (CPU Accelerated)
   paddleocr-vl:
-    image: ccr-2vdh3abv-pub.cnc.bj.baidubce.com/paddlepaddle/paddleocr-genai-vllm-server:latest
+    build:
+      context: .
+      dockerfile: paddleocr/Dockerfile
     container_name: paddleocr-vl
-    command: paddleocr genai_server --model_name PaddleOCR-VL-0.9B --host 0.0.0.0 --port 8080 --backend cpu
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
     networks:
       - app-net
 
@@ -63,6 +70,8 @@ services:
     restart: unless-stopped
     depends_on:
       enterprise-proxy:
+        condition: service_healthy
+      paddleocr-vl:
         condition: service_healthy
     networks:
       - app-net
