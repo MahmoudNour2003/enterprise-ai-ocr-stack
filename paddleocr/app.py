@@ -33,7 +33,7 @@ async def process_document(file: UploadFile = File(...)):
                 img = Image.open(io.BytesIO(pix.tobytes("png")))
                 img_np = np.array(img.convert("RGB"))
 
-                result = ocr.ocr(img_np, cls=True)
+                result = ocr.ocr(img_np)
                 if result and result[0]:
                     lines = [line[1][0] for line in result[0]]
                     text_results.append(
@@ -43,7 +43,7 @@ async def process_document(file: UploadFile = File(...)):
             # If Image (PNG/JPG): Run OCR directly
             img = Image.open(io.BytesIO(content))
             img_np = np.array(img.convert("RGB"))
-            result = ocr.ocr(img_np, cls=True)
+            result = ocr.ocr(img_np)
             if result and result[0]:
                 lines = [line[1][0] for line in result[0]]
                 text_results.append("\n".join(lines))
