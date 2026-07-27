@@ -40,45 +40,52 @@ def prepare_rgb_image(img: Image.Image) -> Image.Image:
 
 
 def parse_paddle_output(result) -> str:
-    """Parses all text lines from PaddleOCR 2.7+ prediction result dictionary."""
+    """Spatially sorts text boxes by Y-coordinate (top-to-bottom) and X-coordinate (left-to-right) to preserve table row order."""
     if not result:
         return ""
 
-    lines = []
-    # If list of prediction dictionaries
     pages = result if isinstance(result, list) else [result]
+    all_lines = []
 
     for page in pages:
         if not page:
             continue
 
-        # PaddleOCR 2.7+ / PaddleX dict format: page['rec_texts']
+        # PaddleOCR 2.7+ / PaddleX dict format: page['rec_texts'] and page['rec_boxes'] / page['dt_polys']
         if isinstance(page, dict) and "rec_texts" in page:
-            for text in page["rec_texts"]:
-                txt_str = str(text).strip()
-                if txt_str:
-                    lines.append(txt_str)
-        elif isinstance(page, list):
-            # Fallback legacy format: [ [box], (text, score) ]
-            for line in page:
-                if not line:
-                    continue
-                try:
-                    if isinstance(line, (list, tuple)) and len(line) >= 2:
-                        text_info = line[1]
-                        if (
-                            isinstance(text_info, (list, tuple))
-                            and len(text_info) >= 1
-                        ):
-                            txt = str(text_info[0]).strip()
-                        else:
-                            txt = str(text_info).strip()
-                        if txt:
-                            lines.append(txt)
-                except Exception:
-                    continue
+            texts = page.get("rec_texts", [])
+            boxes = page.get("rec_boxes", page.get("dt_polys", []))
 
-    return "\n".join(lines).strip()
+            # Pair text with spatial coordinates
+            items = []
+            if (
+                isinstance(boxes, (list, np.ndarray))
+                and len(boxes) == len(texts)
+            ):
+                for box, txt in zip(boxes, texts):
+                    txt_clean = str(txt).strip()
+                    if not txt_clean:
+                        continue
+                    y_top, x_left = 0, 0
+                    if isinstance(box, np.ndarray):
+                        if box.ndim == 2:  # Bounding polygon [[x1,y1], [x2,y2], ...]
+                            y_top = float(box[:, 1].min())
+                            x_left = float(box[:, 0].min())
+                        elif box.ndim == 1 and len(box) >= 4:  # [x1, y1, x2, y2]
+                            y_top = float(box[1])
+                            x_left = float(box[0])
+
+                    items.append({"y": y_top, "x": x_left, "text": txt_clean})
+
+                # Sort spatially: Top-to-Bottom by Y (thresholding lines by ~15px), then Left-to-Right by X
+                items.sort(key=lambda item: (round(item["y"] / 15), item["x"]))
+                all_lines.extend([item["text"] for item in items])
+            else:
+                all_lines.extend([
+                    str(t).strip() for t in texts if str(t).strip()
+                ])
+
+    return "\n".join(all_lines).strip()
 
 
 @app.get("/health")
