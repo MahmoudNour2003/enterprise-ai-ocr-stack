@@ -11,19 +11,19 @@ os.environ["FLAGS_use_onednn"] = "0"
 
 from paddleocr import PaddleOCR
 
-app = FastAPI(title="PaddleOCR High-Precision Service (32GB RAM Optimized)")
+app = FastAPI(title="PaddleOCR CPU Service")
 
-# Initialize PaddleOCR with high-detail detection side length (2560px for maximum table & text accuracy)
+# Initialize PaddleOCR with golden sweet spot parameters (960px det_limit_side_len prevents memory spikes)
 ocr = PaddleOCR(
     use_angle_cls=False,
     lang="ar",
     enable_mkldnn=False,
-    det_limit_side_len=2560,
+    det_limit_side_len=960,
 )
 
 
-def resize_image_if_large(img: Image.Image, max_dim: int = 4096) -> Image.Image:
-    """Safeguard for ultra-high-resolution images (allows up to 4K 4096px)."""
+def resize_image_if_large(img: Image.Image, max_dim: int = 1920) -> Image.Image:
+    """Proportionally resizes large images to prevent excessive memory allocation."""
     w, h = img.size
     if max(w, h) > max_dim:
         scale = max_dim / float(max(w, h))
@@ -35,7 +35,7 @@ def resize_image_if_large(img: Image.Image, max_dim: int = 4096) -> Image.Image:
 
 @app.get("/health")
 def health():
-    return {"status": "healthy", "service": "PaddleOCR High-Precision Ready"}
+    return {"status": "healthy", "service": "PaddleOCR CPU ready"}
 
 
 @app.post("/ocr")
@@ -46,12 +46,12 @@ async def process_document(file: UploadFile = File(...)):
     text_results = []
 
     try:
-        # If PDF: Render pages to images using PyMuPDF at maximum quality 300 DPI
+        # If PDF: Render pages to images using PyMuPDF at golden 200 DPI
         if filename.endswith(".pdf") or file.content_type == "application/pdf":
             doc = fitz.open(stream=content, filetype="pdf")
             for page_index in range(len(doc)):
                 page = doc[page_index]
-                pix = page.get_pixmap(dpi=300)
+                pix = page.get_pixmap(dpi=200)
                 img = Image.open(io.BytesIO(pix.tobytes("png")))
                 img = resize_image_if_large(img)
                 img_np = np.array(img.convert("RGB"))
@@ -67,7 +67,7 @@ async def process_document(file: UploadFile = File(...)):
                         f"--- PAGE {page_index + 1} ---\n" + "\n".join(lines)
                     )
         else:
-            # If Image (PNG/JPG): Run OCR directly at full 4K resolution
+            # If Image (PNG/JPG): Run OCR directly
             img = Image.open(io.BytesIO(content))
             img = resize_image_if_large(img)
             img_np = np.array(img.convert("RGB"))
