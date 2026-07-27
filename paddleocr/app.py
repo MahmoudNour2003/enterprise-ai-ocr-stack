@@ -13,19 +13,33 @@ logger = logging.getLogger("paddleocr-service")
 os.environ["FLAGS_enable_pir_api"] = "0"
 os.environ["FLAGS_use_onednn"] = "0"
 
-from paddleocr import PaddleOCR, PPStructure
+from paddleocr import PaddleOCR
 
-app = FastAPI(title="PaddleOCR + PPStructure Service")
-
-# Initialize PaddleOCR and PPStructure Table Engine
-ocr = PaddleOCR(lang="ar", enable_mkldnn=False)
 try:
-    table_engine = PPStructure(
-        table=True, ocr=True, lang="ar", enable_mkldnn=False, show_log=False
-    )
-except Exception as e:
-    logger.warning(f"PPStructure init fallback: {e}")
-    table_engine = None
+    from paddleocr.ppstructure.predict_system import PPStructure
+except ImportError:
+    try:
+        from paddleocr import PPStructure
+    except ImportError:
+        PPStructure = None
+
+app = FastAPI(title="PaddleOCR Service")
+
+# Initialize PaddleOCR
+ocr = PaddleOCR(lang="ar", enable_mkldnn=False)
+table_engine = None
+
+if PPStructure is not None:
+    try:
+        table_engine = PPStructure(
+            table=True,
+            ocr=True,
+            lang="ar",
+            enable_mkldnn=False,
+            show_log=False,
+        )
+    except Exception as e:
+        logger.warning(f"PPStructure init warning: {e}")
 
 
 def prepare_rgb_image(img: Image.Image) -> Image.Image:
@@ -93,7 +107,6 @@ def extract_document_data(img_np: np.ndarray) -> str:
     """Extracts text and HTML tables from image using PPStructure and PaddleOCR."""
     html_tables = []
 
-    # 1. Try PPStructure Table Engine for structured HTML table extraction
     if table_engine:
         try:
             struct_res = table_engine(img_np)
@@ -109,11 +122,10 @@ def extract_document_data(img_np: np.ndarray) -> str:
         except Exception as e:
             logger.warning(f"PPStructure extraction error: {e}")
 
-    # 2. Extract full text via PaddleOCR predict
+    # Extract full text via PaddleOCR predict
     res = ocr.predict(img_np)
     raw_text = parse_paddle_output(res)
 
-    # 3. Combine structured HTML tables and full text
     combined_parts = []
     if html_tables:
         combined_parts.append(
@@ -127,7 +139,7 @@ def extract_document_data(img_np: np.ndarray) -> str:
 
 @app.get("/health")
 def health():
-    return {"status": "healthy", "service": "PaddleOCR + PPStructure ready"}
+    return {"status": "healthy", "service": "PaddleOCR ready"}
 
 
 @app.post("/ocr")
@@ -147,14 +159,13 @@ async def process_document(file: UploadFile = File(...)):
         )
 
         if is_pdf:
-            logger.info("Processing document as PDF with PPStructure...")
+            logger.info("Processing document as PDF...")
             doc = fitz.open(stream=content, filetype="pdf")
             logger.info(f"PDF page count: {len(doc)}")
 
             for page_index in range(len(doc)):
                 page = doc[page_index]
 
-                # Render page at 200 DPI
                 pix = page.get_pixmap(dpi=200)
                 raw_img = Image.open(io.BytesIO(pix.tobytes("png")))
                 rgb_img = prepare_rgb_image(raw_img)
@@ -170,10 +181,10 @@ async def process_document(file: UploadFile = File(...)):
                         f"=== PAGE {page_index + 1} ===\n" + doc_text
                     )
         else:
-            logger.info("Processing document as Image with PPStructure...")
+            logger.info("Processing document as Image...")
             raw_img = Image.open(io.BytesIO(content))
             rgb_img = prepare_rgb_image(raw_img)
-            img_np = np.array(img.convert("RGB"))
+            img_np = np.array(rgb_img)
 
             doc_text = extract_document_data(img_np)
             logger.info(f"Image extracted {len(doc_text)} chars")
