@@ -44,8 +44,13 @@ else:
 
 from paddleocr import PaddleOCR
 
-# 2. Initialize PaddleOCR Engine
-ocr = PaddleOCR(lang="ar", use_angle_cls=False)
+# 2. Initialize PaddleOCR Engine disabling document orientation classifier (PP-LCNet_x1_0_doc_ori) to prevent segfault
+ocr = PaddleOCR(
+    lang="ar",
+    use_angle_cls=False,
+    use_doc_orientation_classify=False,
+    use_doc_unwarping=False,
+)
 
 app = FastAPI(title="Enterprise PaddleOCR GPU Service")
 
