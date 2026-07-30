@@ -5,13 +5,16 @@ import fitz  # PyMuPDF for PDF page rendering
 from fastapi import FastAPI, File, UploadFile, HTTPException
 from PIL import Image
 import numpy as np
+import paddle
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("paddleocr-service")
 
-# Disable buggy OneDNN / PIR executor conversion on CPU
-os.environ["FLAGS_enable_pir_api"] = "0"
-os.environ["FLAGS_use_onednn"] = "0"
+# Auto-detect NVIDIA GPU availability for Lightning AI / CUDA environments
+USE_GPU = paddle.is_compiled_with_cuda()
+logger.info(f"🚀 Lightning AI GPU Acceleration Mode: {USE_GPU}")
+if USE_GPU:
+    logger.info(f"🎮 Target CUDA Device: {paddle.get_device()}")
 
 from paddleocr import PaddleOCR
 
@@ -23,10 +26,10 @@ except ImportError:
     except ImportError:
         PPStructure = None
 
-app = FastAPI(title="PaddleOCR Service")
+app = FastAPI(title="PaddleOCR Lightning GPU Service")
 
-# Initialize PaddleOCR
-ocr = PaddleOCR(lang="ar", enable_mkldnn=False)
+# Initialize PaddleOCR with automatic GPU / CPU fallback
+ocr = PaddleOCR(use_gpu=USE_GPU, lang="ar")
 table_engine = None
 
 if PPStructure is not None:
@@ -35,11 +38,12 @@ if PPStructure is not None:
             table=True,
             ocr=True,
             lang="ar",
-            enable_mkldnn=False,
+            use_gpu=USE_GPU,
             show_log=False,
         )
     except Exception as e:
-        logger.warning(f"PPStructure init warning: {e}")
+        logger.warning(f"PPStructure GPU init warning: {e}")
+        table_engine = None
 
 
 def prepare_rgb_image(img: Image.Image) -> Image.Image:
@@ -139,7 +143,12 @@ def extract_document_data(img_np: np.ndarray) -> str:
 
 @app.get("/health")
 def health():
-    return {"status": "healthy", "service": "PaddleOCR ready"}
+    return {
+        "status": "healthy",
+        "service": "PaddleOCR Lightning GPU Service",
+        "gpu_enabled": USE_GPU,
+        "cuda_device": paddle.get_device() if USE_GPU else "cpu",
+    }
 
 
 @app.post("/ocr")
@@ -166,7 +175,8 @@ async def process_document(file: UploadFile = File(...)):
             for page_index in range(len(doc)):
                 page = doc[page_index]
 
-                pix = page.get_pixmap(dpi=200)
+                # Render at high quality 300 DPI (blazing fast on GPU)
+                pix = page.get_pixmap(dpi=300)
                 raw_img = Image.open(io.BytesIO(pix.tobytes("png")))
                 rgb_img = prepare_rgb_image(raw_img)
                 img_np = np.array(rgb_img)
