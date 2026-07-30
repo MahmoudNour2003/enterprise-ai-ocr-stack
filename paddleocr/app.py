@@ -1,16 +1,18 @@
+import os
+
+# Disable PIR executor and OneDNN at line 1 BEFORE importing paddle to prevent ConvertPirAttribute2RuntimeAttribute crash
+os.environ["FLAGS_enable_pir_api"] = "0"
+os.environ["FLAGS_use_onednn"] = "0"
+os.environ["FLAGS_enable_pir_in_executor"] = "0"
+os.environ["PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK"] = "True"
+
 import io
 import logging
-import os
 import fitz  # PyMuPDF for PDF rendering
 from fastapi import FastAPI, File, UploadFile, HTTPException
 from PIL import Image
 import numpy as np
 import paddle
-
-# Environment flags to prevent C++ executor crashes
-os.environ["FLAGS_enable_pir_api"] = "0"
-os.environ["FLAGS_use_onednn"] = "0"
-os.environ["PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK"] = "True"
 
 # Monkeypatch missing AnalysisConfig.set_optimization_level for PaddleX 3.0 / Python 3.12 compatibility
 try:
