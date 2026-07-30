@@ -44,11 +44,14 @@ else:
 
 from paddleocr import PaddleOCR
 
-# 2. Use official rock-solid PP-OCRv3 Arabic model engine
+# 2. Explicitly set doc preprocessor models to None to bypass PP-LCNet_x1_0_doc_ori creation
 ocr = PaddleOCR(
     lang="ar",
     ocr_version="PP-OCRv3",
     use_angle_cls=False,
+    doc_ori_classify_model=None,
+    doc_unwarping_model=None,
+    textline_orientation_model=None,
 )
 
 app = FastAPI(title="Enterprise PaddleOCR GPU Service")
