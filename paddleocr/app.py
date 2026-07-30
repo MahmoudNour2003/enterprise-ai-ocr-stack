@@ -14,7 +14,7 @@ from PIL import Image
 import numpy as np
 import paddle
 
-# Monkeypatch missing AnalysisConfig.set_optimization_level for PaddleX 3.0 / Python 3.12 compatibility
+# Monkeypatch missing AnalysisConfig.set_optimization_level for PaddleX / Python 3.12 compatibility
 try:
     if hasattr(paddle, "base") and hasattr(paddle.base, "libpaddle"):
         if not hasattr(
@@ -44,12 +44,11 @@ else:
 
 from paddleocr import PaddleOCR
 
-# 2. Initialize PaddleOCR Engine disabling document orientation classifier (PP-LCNet_x1_0_doc_ori) to prevent segfault
+# 2. Use ultra-stable PP-OCRv4 model engine to bypass PaddleX 3.0 C++ NaiveExecutor segfault on Python 3.12
 ocr = PaddleOCR(
     lang="ar",
+    ocr_version="PP-OCRv4",
     use_angle_cls=False,
-    use_doc_orientation_classify=False,
-    use_doc_unwarping=False,
 )
 
 app = FastAPI(title="Enterprise PaddleOCR GPU Service")
@@ -138,7 +137,6 @@ async def process_document(file: UploadFile = File(...)):
                 rgb_img = prepare_rgb_image(raw_img)
                 img_np = np.array(rgb_img)
 
-                # Use direct ocr() method to bypass PaddleX static runner
                 res = ocr.ocr(img_np)
                 page_text = parse_paddle_output(res)
                 if page_text:
@@ -150,7 +148,6 @@ async def process_document(file: UploadFile = File(...)):
             rgb_img = prepare_rgb_image(raw_img)
             img_np = np.array(rgb_img)
 
-            # Use direct ocr() method to bypass PaddleX static runner
             res = ocr.ocr(img_np)
             page_text = parse_paddle_output(res)
             if page_text:
