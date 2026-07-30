@@ -1,61 +1,38 @@
 import io
 import logging
 import os
-import fitz  # PyMuPDF for PDF page rendering
+import fitz  # PyMuPDF for PDF rendering
 from fastapi import FastAPI, File, UploadFile, HTTPException
 from PIL import Image
 import numpy as np
 import paddle
 
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("paddleocr-service")
+logger = logging.getLogger("paddleocr-gpu-service")
 
-# Auto-detect NVIDIA GPU availability for Lightning AI / CUDA environments
+# 1. Automatic GPU / CUDA Device Initialization
 USE_GPU = paddle.is_compiled_with_cuda()
 if USE_GPU:
     try:
         paddle.set_device("gpu")
-        logger.info(
-            f"🚀 Lightning AI GPU Accelerated Device: {paddle.get_device()}"
-        )
+        logger.info(f"🚀 Lightning AI GPU Enabled: {paddle.get_device()}")
     except Exception as e:
-        logger.warning(f"Failed to set GPU device: {e}")
+        logger.warning(f"Failed to set GPU device: {e}. Falling back to CPU.")
         paddle.set_device("cpu")
 else:
     paddle.set_device("cpu")
-    logger.info("ℹ️ Running on CPU mode")
+    logger.info("ℹ️ Running in CPU mode")
 
 from paddleocr import PaddleOCR
 
-try:
-    from paddleocr.ppstructure.predict_system import PPStructure
-except ImportError:
-    try:
-        from paddleocr import PPStructure
-    except ImportError:
-        PPStructure = None
+# 2. Clean PaddleOCR Instance Initialization
+ocr = PaddleOCR(lang="ar")
 
-app = FastAPI(title="PaddleOCR Service")
-
-# Initialize PaddleOCR
-ocr = PaddleOCR(lang="ar", use_angle_cls=False)
-
-table_engine = None
-if PPStructure is not None:
-    try:
-        table_engine = PPStructure(
-            table=True,
-            ocr=True,
-            lang="ar",
-            show_log=False,
-            use_angle_cls=False,
-        )
-    except Exception as e:
-        logger.warning(f"PPStructure init warning: {e}")
+app = FastAPI(title="Enterprise PaddleOCR GPU Service")
 
 
 def prepare_rgb_image(img: Image.Image) -> Image.Image:
-    """Safely converts RGBA/transparent images to RGB with a solid white background."""
+    """Safely converts transparent PDF scans (RGBA) onto a solid white background."""
     if img.mode in ("RGBA", "LA") or (
         img.mode == "P" and "transparency" in img.info
     ):
@@ -70,7 +47,7 @@ def prepare_rgb_image(img: Image.Image) -> Image.Image:
 
 
 def parse_paddle_output(result) -> str:
-    """Spatially sorts text boxes by Y-coordinate (top-to-bottom) and X-coordinate (left-to-right) to preserve table row order."""
+    """Sorts text boxes top-to-bottom (Y) and left-to-right (X) to maintain table row structure."""
     if not result:
         return ""
 
@@ -81,6 +58,7 @@ def parse_paddle_output(result) -> str:
         if not page:
             continue
 
+        # Handle paddleocr output dictionary structure
         if isinstance(page, dict) and "rec_texts" in page:
             texts = page.get("rec_texts", [])
             boxes = page.get("rec_boxes", page.get("dt_polys", []))
@@ -112,49 +90,30 @@ def parse_paddle_output(result) -> str:
                     str(t).strip() for t in texts if str(t).strip()
                 ])
 
+        # Handle paddleocr output list structure
+        elif isinstance(page, list):
+            for res in page:
+                if isinstance(res, list):
+                    for line in res:
+                        if isinstance(line, (list, tuple)) and len(line) >= 2:
+                            txt = (
+                                line[1][0]
+                                if isinstance(line[1], (list, tuple))
+                                else str(line[1])
+                            )
+                            if txt.strip():
+                                all_lines.append(txt.strip())
+
     return "\n".join(all_lines).strip()
-
-
-def extract_document_data(img_np: np.ndarray) -> str:
-    """Extracts text and HTML tables from image using PPStructure and PaddleOCR."""
-    html_tables = []
-
-    if table_engine:
-        try:
-            struct_res = table_engine(img_np)
-            if struct_res:
-                for region in struct_res:
-                    if (
-                        isinstance(region, dict)
-                        and region.get("type") == "table"
-                    ):
-                        res_data = region.get("res", {})
-                        if isinstance(res_data, dict) and "html" in res_data:
-                            html_tables.append(res_data["html"])
-        except Exception as e:
-            logger.warning(f"PPStructure extraction error: {e}")
-
-    # Extract full text via PaddleOCR predict
-    res = ocr.predict(img_np)
-    raw_text = parse_paddle_output(res)
-
-    combined_parts = []
-    if html_tables:
-        combined_parts.append(
-            "--- STRUCTURED TABLES (HTML) ---\n" + "\n\n".join(html_tables)
-        )
-    if raw_text:
-        combined_parts.append("--- DOCUMENT TEXT ---\n" + raw_text)
-
-    return "\n\n".join(combined_parts).strip()
 
 
 @app.get("/health")
 def health():
     return {
         "status": "healthy",
-        "service": "PaddleOCR ready",
+        "service": "PaddleOCR GPU Service",
         "gpu_enabled": USE_GPU,
+        "device": paddle.get_device(),
     }
 
 
@@ -163,7 +122,7 @@ def health():
 async def process_document(file: UploadFile = File(...)):
     filename = file.filename if file.filename else "file.pdf"
     content = await file.read()
-    logger.info(f"Received file: {filename}, size: {len(content)} bytes")
+    logger.info(f"Processing document: {filename} ({len(content)} bytes)")
 
     text_results = []
 
@@ -175,44 +134,42 @@ async def process_document(file: UploadFile = File(...)):
         )
 
         if is_pdf:
-            logger.info("Processing document as PDF...")
             doc = fitz.open(stream=content, filetype="pdf")
-            logger.info(f"PDF page count: {len(doc)}")
+            logger.info(f"PDF Page count: {len(doc)}")
 
             for page_index in range(len(doc)):
                 page = doc[page_index]
-
                 pix = page.get_pixmap(dpi=200)
                 raw_img = Image.open(io.BytesIO(pix.tobytes("png")))
                 rgb_img = prepare_rgb_image(raw_img)
                 img_np = np.array(rgb_img)
 
-                doc_text = extract_document_data(img_np)
-                logger.info(
-                    f"Page {page_index + 1} extracted {len(doc_text)} chars"
-                )
+                if hasattr(ocr, "predict"):
+                    res = ocr.predict(img_np)
+                else:
+                    res = ocr.ocr(img_np)
 
-                if doc_text:
+                page_text = parse_paddle_output(res)
+                if page_text:
                     text_results.append(
-                        f"=== PAGE {page_index + 1} ===\n" + doc_text
+                        f"--- PAGE {page_index + 1} ---\n" + page_text
                     )
         else:
-            logger.info("Processing document as Image...")
             raw_img = Image.open(io.BytesIO(content))
             rgb_img = prepare_rgb_image(raw_img)
             img_np = np.array(rgb_img)
 
-            doc_text = extract_document_data(img_np)
-            logger.info(f"Image extracted {len(doc_text)} chars")
+            if hasattr(ocr, "predict"):
+                res = ocr.predict(img_np)
+            else:
+                res = ocr.ocr(img_np)
 
-            if doc_text:
-                text_results.append(doc_text)
+            page_text = parse_paddle_output(res)
+            if page_text:
+                text_results.append(page_text)
 
         full_extracted_text = "\n\n".join(text_results).strip()
-        logger.info(f"Total extracted text length: {len(full_extracted_text)}")
-
         if not full_extracted_text:
-            logger.warning("OCR detected 0 characters!")
             full_extracted_text = (
                 "[NO TEXT DETECTED BY OCR ENGINE ON THIS DOCUMENT]"
             )
@@ -220,7 +177,5 @@ async def process_document(file: UploadFile = File(...)):
         return {"text": full_extracted_text, "output": full_extracted_text}
 
     except Exception as e:
-        logger.error(f"OCR processing failed: {str(e)}", exc_info=True)
-        raise HTTPException(
-            status_code=500, detail=f"OCR error: {str(e)}"
-        )
+        logger.error(f"OCR execution error: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"OCR error: {str(e)}")
