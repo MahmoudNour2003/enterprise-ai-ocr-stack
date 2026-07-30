@@ -1,6 +1,6 @@
 import os
 
-# Disable PIR executor and OneDNN at line 1 BEFORE importing paddle to prevent ConvertPirAttribute2RuntimeAttribute crash
+# Disable PIR executor and OneDNN flags BEFORE importing paddle
 os.environ["FLAGS_enable_pir_api"] = "0"
 os.environ["FLAGS_use_onednn"] = "0"
 os.environ["FLAGS_enable_pir_in_executor"] = "0"
@@ -44,7 +44,7 @@ else:
 
 from paddleocr import PaddleOCR
 
-# 2. Initialize PaddleOCR with use_angle_cls=False to skip orientation classifier segfault
+# 2. Initialize PaddleOCR Engine
 ocr = PaddleOCR(lang="ar", use_angle_cls=False)
 
 app = FastAPI(title="Enterprise PaddleOCR GPU Service")
@@ -66,62 +66,32 @@ def prepare_rgb_image(img: Image.Image) -> Image.Image:
 
 
 def parse_paddle_output(result) -> str:
-    """Sorts text boxes top-to-bottom (Y) and left-to-right (X) to maintain table row structure."""
+    """Extracts and spatially sorts text lines from PaddleOCR output."""
     if not result:
         return ""
 
-    pages = result if isinstance(result, list) else [result]
     all_lines = []
 
+    # Handle standard PaddleOCR result format: [[ [box, (text, score)], ... ]]
+    pages = result if isinstance(result, list) else [result]
     for page in pages:
         if not page:
             continue
-
-        # Handle paddleocr output dictionary structure
         if isinstance(page, dict) and "rec_texts" in page:
             texts = page.get("rec_texts", [])
-            boxes = page.get("rec_boxes", page.get("dt_polys", []))
-
-            items = []
-            if (
-                isinstance(boxes, (list, np.ndarray))
-                and len(boxes) == len(texts)
-            ):
-                for box, txt in zip(boxes, texts):
-                    txt_clean = str(txt).strip()
-                    if not txt_clean:
-                        continue
-                    y_top, x_left = 0, 0
-                    if isinstance(box, np.ndarray):
-                        if box.ndim == 2:
-                            y_top = float(box[:, 1].min())
-                            x_left = float(box[:, 0].min())
-                        elif box.ndim == 1 and len(box) >= 4:
-                            y_top = float(box[1])
-                            x_left = float(box[0])
-
-                    items.append({"y": y_top, "x": x_left, "text": txt_clean})
-
-                items.sort(key=lambda item: (round(item["y"] / 15), item["x"]))
-                all_lines.extend([item["text"] for item in items])
-            else:
-                all_lines.extend([
-                    str(t).strip() for t in texts if str(t).strip()
-                ])
-
-        # Handle paddleocr output list structure
+            all_lines.extend([str(t).strip() for t in texts if str(t).strip()])
         elif isinstance(page, list):
-            for res in page:
-                if isinstance(res, list):
-                    for line in res:
-                        if isinstance(line, (list, tuple)) and len(line) >= 2:
-                            txt = (
-                                line[1][0]
-                                if isinstance(line[1], (list, tuple))
-                                else str(line[1])
-                            )
-                            if txt.strip():
-                                all_lines.append(txt.strip())
+            for line in page:
+                if isinstance(line, (list, tuple)) and len(line) >= 2:
+                    txt_info = line[1]
+                    if isinstance(txt_info, (list, tuple)) and len(txt_info) >= 1:
+                        txt = str(txt_info[0]).strip()
+                        if txt:
+                            all_lines.append(txt)
+                    elif isinstance(txt_info, str):
+                        txt = txt_info.strip()
+                        if txt:
+                            all_lines.append(txt)
 
     return "\n".join(all_lines).strip()
 
@@ -163,11 +133,8 @@ async def process_document(file: UploadFile = File(...)):
                 rgb_img = prepare_rgb_image(raw_img)
                 img_np = np.array(rgb_img)
 
-                if hasattr(ocr, "predict"):
-                    res = ocr.predict(img_np)
-                else:
-                    res = ocr.ocr(img_np)
-
+                # Use direct ocr() method to bypass PaddleX static runner
+                res = ocr.ocr(img_np)
                 page_text = parse_paddle_output(res)
                 if page_text:
                     text_results.append(
@@ -178,11 +145,8 @@ async def process_document(file: UploadFile = File(...)):
             rgb_img = prepare_rgb_image(raw_img)
             img_np = np.array(rgb_img)
 
-            if hasattr(ocr, "predict"):
-                res = ocr.predict(img_np)
-            else:
-                res = ocr.ocr(img_np)
-
+            # Use direct ocr() method to bypass PaddleX static runner
+            res = ocr.ocr(img_np)
             page_text = parse_paddle_output(res)
             if page_text:
                 text_results.append(page_text)
