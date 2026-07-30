@@ -17,9 +17,16 @@ class ITIClient:
 
     async def start(self) -> None:
         headers = {
-            "Authorization": f"Bearer {settings.iti_api_key}",
             "Content-Type": "application/json",
         }
+        api_key = (settings.iti_api_key or "").strip()
+        if api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
+        else:
+            logger.warning(
+                "⚠️ ITI_API_KEY is empty! Please configure ITI_API_KEY in your .env file."
+            )
+
         self.client = httpx.AsyncClient(
             base_url=settings.iti_base_url.rstrip("/"),
             headers=headers,
