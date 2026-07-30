@@ -1,7 +1,12 @@
 """Application settings loaded from environment variables."""
 
+from pathlib import Path
 from typing import List
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Get absolute path to enterprise-ai-ocr-stack root directory
+ROOT_DIR = Path(__file__).resolve().parent.parent.parent
+ENV_PATH = ROOT_DIR / ".env"
 
 
 class Settings(BaseSettings):
@@ -11,10 +16,10 @@ class Settings(BaseSettings):
     iti_base_url: str = "http://apiaccess.iti.net.eg/api/v1"
     port: int = 8000
     allowed_models: str = "deepseek.v3.2,anthropic.claude-3-haiku-20240307-v1:0"
-    max_retries: int = 1
+    max_retries: int = 3
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=str(ENV_PATH),
         env_file_encoding="utf-8",
         extra="ignore",
         case_sensitive=False,
