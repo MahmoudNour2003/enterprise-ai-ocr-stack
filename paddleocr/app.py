@@ -7,6 +7,18 @@ from PIL import Image
 import numpy as np
 import paddle
 
+# Monkeypatch missing AnalysisConfig.set_optimization_level for PaddleX 3.0 / Python 3.12 compatibility
+try:
+    if hasattr(paddle, "base") and hasattr(paddle.base, "libpaddle"):
+        if not hasattr(
+            paddle.base.libpaddle.AnalysisConfig, "set_optimization_level"
+        ):
+            paddle.base.libpaddle.AnalysisConfig.set_optimization_level = (
+                lambda self, level: None
+            )
+except Exception:
+    pass
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("paddleocr-gpu-service")
 
