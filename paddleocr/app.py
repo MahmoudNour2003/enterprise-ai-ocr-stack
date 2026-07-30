@@ -15,7 +15,9 @@ USE_GPU = paddle.is_compiled_with_cuda()
 if USE_GPU:
     try:
         paddle.set_device("gpu")
-        logger.info(f"🚀 Lightning AI GPU Accelerated Device: {paddle.get_device()}")
+        logger.info(
+            f"🚀 Lightning AI GPU Accelerated Device: {paddle.get_device()}"
+        )
     except Exception as e:
         logger.warning(f"Failed to set GPU device: {e}")
         paddle.set_device("cpu")
@@ -35,10 +37,16 @@ except ImportError:
 
 app = FastAPI(title="PaddleOCR Service")
 
-# Initialize PaddleOCR
-ocr = PaddleOCR(lang="ar")
-table_engine = None
+# Initialize PaddleOCR with doc preprocessor disabled to avoid AnalysisConfig set_optimization_level error
+ocr = PaddleOCR(
+    lang="ar",
+    use_angle_cls=False,
+    use_doc_orientation_classify=False,
+    use_doc_unwarping=False,
+    use_textline_orientation=False,
+)
 
+table_engine = None
 if PPStructure is not None:
     try:
         table_engine = PPStructure(
@@ -46,6 +54,8 @@ if PPStructure is not None:
             ocr=True,
             lang="ar",
             show_log=False,
+            use_doc_orientation_classify=False,
+            use_doc_unwarping=False,
         )
     except Exception as e:
         logger.warning(f"PPStructure init warning: {e}")
