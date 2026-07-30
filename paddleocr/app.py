@@ -44,11 +44,12 @@ else:
 
 from paddleocr import PaddleOCR
 
-# 2. Disable doc orientation classifier explicitly
+# 2. Disable both orientation classifier (PP-LCNet_x1_0_doc_ori) and unwarping (UVDoc) explicitly
 ocr = PaddleOCR(
     lang="ar",
     use_angle_cls=False,
     use_doc_orientation_classify=False,
+    use_doc_unwarping=False,
 )
 
 app = FastAPI(title="Enterprise PaddleOCR GPU Service")
