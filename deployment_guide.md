@@ -113,8 +113,11 @@ python -m uvicorn app:app --app-dir ./paddleocr --host 0.0.0.0 --port 8080 &
 # 4. Start Enterprise AI Proxy (Port 8000)
 python -m uvicorn proxy.app.main:app --host 0.0.0.0 --port 8000 &
 
-# 5. Start n8n Engine Detached (Port 5678)
-N8N_LISTEN_ADDRESS=0.0.0.0 N8N_HOST=0.0.0.0 N8N_SECURE_COOKIE=false nohup n8n start --port 5678 --host 0.0.0.0 > n8n.log 2>&1 &
+# 5. Start n8n Engine via npx (Port 5678)
+export N8N_LISTEN_ADDRESS=0.0.0.0
+export N8N_HOST=0.0.0.0
+export N8N_SECURE_COOKIE=false
+npx n8n start --port 5678 --host 0.0.0.0 &
 ```
 
 ---
