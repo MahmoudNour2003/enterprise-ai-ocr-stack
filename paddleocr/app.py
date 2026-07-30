@@ -12,9 +12,16 @@ logger = logging.getLogger("paddleocr-service")
 
 # Auto-detect NVIDIA GPU availability for Lightning AI / CUDA environments
 USE_GPU = paddle.is_compiled_with_cuda()
-logger.info(f"🚀 Lightning AI GPU Acceleration Mode: {USE_GPU}")
 if USE_GPU:
-    logger.info(f"🎮 Target CUDA Device: {paddle.get_device()}")
+    try:
+        paddle.set_device("gpu")
+        logger.info(f"🚀 Lightning AI GPU Accelerated Device: {paddle.get_device()}")
+    except Exception as e:
+        logger.warning(f"Failed to set GPU device: {e}")
+        paddle.set_device("cpu")
+else:
+    paddle.set_device("cpu")
+    logger.info("ℹ️ Running on CPU mode")
 
 from paddleocr import PaddleOCR
 
@@ -26,10 +33,10 @@ except ImportError:
     except ImportError:
         PPStructure = None
 
-app = FastAPI(title="PaddleOCR Lightning GPU Service")
+app = FastAPI(title="PaddleOCR Service")
 
-# Initialize PaddleOCR with automatic GPU / CPU fallback
-ocr = PaddleOCR(use_gpu=USE_GPU, lang="ar")
+# Initialize PaddleOCR
+ocr = PaddleOCR(lang="ar")
 table_engine = None
 
 if PPStructure is not None:
@@ -38,12 +45,10 @@ if PPStructure is not None:
             table=True,
             ocr=True,
             lang="ar",
-            use_gpu=USE_GPU,
             show_log=False,
         )
     except Exception as e:
-        logger.warning(f"PPStructure GPU init warning: {e}")
-        table_engine = None
+        logger.warning(f"PPStructure init warning: {e}")
 
 
 def prepare_rgb_image(img: Image.Image) -> Image.Image:
@@ -145,9 +150,8 @@ def extract_document_data(img_np: np.ndarray) -> str:
 def health():
     return {
         "status": "healthy",
-        "service": "PaddleOCR Lightning GPU Service",
+        "service": "PaddleOCR ready",
         "gpu_enabled": USE_GPU,
-        "cuda_device": paddle.get_device() if USE_GPU else "cpu",
     }
 
 
@@ -175,8 +179,7 @@ async def process_document(file: UploadFile = File(...)):
             for page_index in range(len(doc)):
                 page = doc[page_index]
 
-                # Render at high quality 300 DPI (blazing fast on GPU)
-                pix = page.get_pixmap(dpi=300)
+                pix = page.get_pixmap(dpi=200)
                 raw_img = Image.open(io.BytesIO(pix.tobytes("png")))
                 rgb_img = prepare_rgb_image(raw_img)
                 img_np = np.array(rgb_img)
@@ -194,7 +197,7 @@ async def process_document(file: UploadFile = File(...)):
             logger.info("Processing document as Image...")
             raw_img = Image.open(io.BytesIO(content))
             rgb_img = prepare_rgb_image(raw_img)
-            img_np = np.array(rgb_img)
+            img_np = np.array(img.convert("RGB"))
 
             doc_text = extract_document_data(img_np)
             logger.info(f"Image extracted {len(doc_text)} chars")
