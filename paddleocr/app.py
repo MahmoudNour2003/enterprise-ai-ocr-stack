@@ -44,10 +44,10 @@ else:
 
 from paddleocr import PaddleOCR
 
-# 2. Use ultra-stable PP-OCRv4 model engine to bypass PaddleX 3.0 C++ NaiveExecutor segfault on Python 3.12
+# 2. Use official rock-solid PP-OCRv3 Arabic model engine
 ocr = PaddleOCR(
     lang="ar",
-    ocr_version="PP-OCRv4",
+    ocr_version="PP-OCRv3",
     use_angle_cls=False,
 )
 
