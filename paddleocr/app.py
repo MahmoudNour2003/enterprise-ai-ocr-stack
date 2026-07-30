@@ -37,14 +37,8 @@ except ImportError:
 
 app = FastAPI(title="PaddleOCR Service")
 
-# Initialize PaddleOCR with doc preprocessor disabled to avoid AnalysisConfig set_optimization_level error
-ocr = PaddleOCR(
-    lang="ar",
-    use_angle_cls=False,
-    use_doc_orientation_classify=False,
-    use_doc_unwarping=False,
-    use_textline_orientation=False,
-)
+# Initialize PaddleOCR
+ocr = PaddleOCR(lang="ar", use_angle_cls=False)
 
 table_engine = None
 if PPStructure is not None:
@@ -54,8 +48,7 @@ if PPStructure is not None:
             ocr=True,
             lang="ar",
             show_log=False,
-            use_doc_orientation_classify=False,
-            use_doc_unwarping=False,
+            use_angle_cls=False,
         )
     except Exception as e:
         logger.warning(f"PPStructure init warning: {e}")
@@ -207,7 +200,7 @@ async def process_document(file: UploadFile = File(...)):
             logger.info("Processing document as Image...")
             raw_img = Image.open(io.BytesIO(content))
             rgb_img = prepare_rgb_image(raw_img)
-            img_np = np.array(img.convert("RGB"))
+            img_np = np.array(rgb_img)
 
             doc_text = extract_document_data(img_np)
             logger.info(f"Image extracted {len(doc_text)} chars")
