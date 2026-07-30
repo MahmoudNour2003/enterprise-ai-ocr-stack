@@ -7,6 +7,11 @@ from PIL import Image
 import numpy as np
 import paddle
 
+# Environment flags to prevent C++ executor crashes
+os.environ["FLAGS_enable_pir_api"] = "0"
+os.environ["FLAGS_use_onednn"] = "0"
+os.environ["PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK"] = "True"
+
 # Monkeypatch missing AnalysisConfig.set_optimization_level for PaddleX 3.0 / Python 3.12 compatibility
 try:
     if hasattr(paddle, "base") and hasattr(paddle.base, "libpaddle"):
@@ -37,8 +42,8 @@ else:
 
 from paddleocr import PaddleOCR
 
-# 2. Clean PaddleOCR Instance Initialization
-ocr = PaddleOCR(lang="ar")
+# 2. Initialize PaddleOCR with use_angle_cls=False to skip orientation classifier segfault
+ocr = PaddleOCR(lang="ar", use_angle_cls=False)
 
 app = FastAPI(title="Enterprise PaddleOCR GPU Service")
 
