@@ -12,6 +12,10 @@ fuser -k 8000/tcp || true
 fuser -k 3001/tcp || true
 fuser -k 5678/tcp || true
 
+# Fix n8n encryption key mismatch error
+rm -f ~/.n8n/config || true
+rm -f /teamspace/studios/this_studio/.n8n/config || true
+
 # 2. Start Service 1: PaddleOCR Service (Port 8080)
 echo "📦 [1/4] Starting PaddleOCR Service on Port 8080..."
 cd paddleocr
