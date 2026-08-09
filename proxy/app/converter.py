@@ -3,7 +3,7 @@
 import json
 import time
 import uuid
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Tuple, Optional
 from app.models import (
     OpenAIChatCompletionRequest,
     OpenAIChatCompletionResponse,
