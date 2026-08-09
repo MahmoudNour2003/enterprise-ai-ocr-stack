@@ -1,16 +1,24 @@
-# Environment Variables (Contains sensitive API keys)
+# Environment Variables
 .env
 .env.local
+
+# Node.js
+node_modules/
+dist/
+npm-debug.log*
+yarn-debug.log*
 
 # Python Cache & Bytecode
 __pycache__/
 *.py[cod]
 *$py.class
 .pytest_cache/
+venv/
+env/
 
-# n8n Storage & Data (Generated at runtime)
+# n8n Storage & Data
 n8n_data/
 .n8n/
 
-# Docker Local Storage
+# Logs
 *.log

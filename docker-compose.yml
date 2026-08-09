@@ -7,12 +7,14 @@ volumes:
     driver: local
 
 services:
-  # 1. PaddleOCR Inference Service (CPU Accelerated)
+  # 1. PaddleOCR Inference Service (CPU / GPU Accelerated Port 8080)
   paddleocr-vl:
     build:
       context: .
       dockerfile: paddleocr/Dockerfile
     container_name: paddleocr-vl
+    ports:
+      - "8080:8080"
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
@@ -23,12 +25,14 @@ services:
     networks:
       - app-net
 
-  # 2. Enterprise AI Proxy (FastAPI Bridge to ITI Enterprise AI)
+  # 2. Enterprise AI Proxy (FastAPI Bridge to ITI Enterprise AI Port 8000)
   enterprise-proxy:
     build:
       context: .
       dockerfile: proxy/Dockerfile
     container_name: enterprise-proxy
+    ports:
+      - "8000:8000"
     env_file:
       - .env
     environment:
@@ -36,7 +40,7 @@ services:
       - ITI_BASE_URL=${ITI_BASE_URL:-http://apiaccess.iti.net.eg/api/v1}
       - PORT=${PORT:-8000}
       - MAX_RETRIES=${MAX_RETRIES:-3}
-      - ALLOWED_MODELS=${ALLOWED_MODELS}
+      - ALLOWED_MODELS=${ALLOWED_MODELS:-openai.gpt-oss-120b-1:0,deepseek.v3.2}
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
@@ -47,14 +51,43 @@ services:
     networks:
       - app-net
 
-  # 3. n8n Automation Engine (Exposed directly on Public Port 80)
+  # 3. SQL MCP Server (Node.js/TypeScript SQL Tool Server Port 3001)
+  sql-mcp-server:
+    build:
+      context: ./sql-mcp-server
+      dockerfile: Dockerfile
+    container_name: sql-mcp-server
+    env_file:
+      - .env
+    environment:
+      - MCP_PORT=3001
+      - DB_HOST=${DB_HOST:-127.0.0.1}
+      - DB_PORT=${DB_PORT:-1433}
+      - DB_NAME=${DB_NAME:-SPIP_DB}
+      - DB_USER=${DB_USER:-AI_CHAT}
+      - DB_PASSWORD=${DB_PASSWORD:-AI@123}
+      - DB_ENCRYPT=${DB_ENCRYPT:-false}
+      - DB_TRUST_SERVER_CERT=${DB_TRUST_SERVER_CERT:-true}
+    ports:
+      - "${MCP_PORT:-3001}:3001"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3001/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    networks:
+      - app-net
+
+  # 4. n8n Automation Engine (Exposed on Public Port 5678)
   n8n:
     build:
       context: .
       dockerfile: n8n/Dockerfile
     container_name: n8n
     ports:
-      - "80:5678"
+      - "${N8N_PORT:-5678}:5678"
     env_file:
       - .env
     environment:
@@ -62,8 +95,8 @@ services:
       - N8N_PORT=5678
       - N8N_PROTOCOL=http
       - N8N_SECURE_COOKIE=false
-      - WEBHOOK_URL=http://${AZURE_VM_PUBLIC_IP:-localhost}
-      - N8N_WEBHOOK_URL=http://${AZURE_VM_PUBLIC_IP:-localhost}
+      - WEBHOOK_URL=${WEBHOOK_URL:-http://localhost:5678}
+      - N8N_WEBHOOK_URL=${WEBHOOK_URL:-http://localhost:5678}
       - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY:-supersecretn8nkey12345}
     volumes:
       - n8n_data:/home/node/.n8n
@@ -73,6 +106,8 @@ services:
       enterprise-proxy:
         condition: service_healthy
       paddleocr-vl:
+        condition: service_healthy
+      sql-mcp-server:
         condition: service_healthy
     networks:
       - app-net
