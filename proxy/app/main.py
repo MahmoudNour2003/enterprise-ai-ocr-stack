@@ -4,11 +4,11 @@ from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
-from proxy.app.client import iti_client
-from proxy.app.converter import format_openai_error
-from proxy.app.routes import router
-from proxy.app.settings import settings
-from proxy.app.utils import logger
+from app.client import iti_client
+from app.converter import format_openai_error
+from app.routes import router
+from app.settings import settings
+from app.utils import logger
 
 
 @asynccontextmanager
