@@ -13,10 +13,9 @@ chmod +x ./stop_all_services.sh 2>/dev/null || true
 rm -f ~/.n8n/config || true
 rm -f /teamspace/studios/this_studio/.n8n/config || true
 
-# 2. Start Service 1: PaddleOCR Service (Port 8080)
-echo "📦 [1/4] Starting PaddleOCR Service on Port 8080..."
+# 2. Start Service 1: PaddleOCR GPU Service (Port 8080)
+echo "📦 [1/4] Starting PaddleOCR GPU Service on Port 8080..."
 cd paddleocr
-pip install -r requirements.txt > /dev/null 2>&1 || true
 python3 -m uvicorn app:app --host 0.0.0.0 --port 8080 > ../paddleocr.log 2>&1 &
 cd ..
 
@@ -31,7 +30,6 @@ cd ..
 # 4. Start Service 3: Enterprise AI Proxy (Port 8000)
 echo "📦 [3/4] Starting Enterprise AI Proxy on Port 8000..."
 cd proxy
-pip install -r requirements.txt > /dev/null 2>&1 || true
 python3 -m uvicorn app.main:app --host 0.0.0.0 --port 8000 > ../proxy.log 2>&1 &
 cd ..
 
