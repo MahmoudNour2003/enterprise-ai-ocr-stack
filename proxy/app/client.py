@@ -1,4 +1,4 @@
-"""Async HTTP client for ITI Enterprise AI Provider."""
+"""Async HTTP client for ITI Enterprise AI Provider with retry logic."""
 
 import asyncio
 import time
@@ -10,23 +10,17 @@ from app.utils import logger, log_request_metrics
 
 
 class ITIClient:
-    """Async HTTP client wrapper for ITI Enterprise AI Provider."""
+    """Async HTTP client wrapper for communicating with ITI Enterprise AI Provider."""
 
     def __init__(self) -> None:
         self.client: Optional[httpx.AsyncClient] = None
 
     async def start(self) -> None:
+        """Initializes the underlying httpx AsyncClient."""
         headers = {
+            "Authorization": f"Bearer {settings.iti_api_key}",
             "Content-Type": "application/json",
         }
-        api_key = (settings.iti_api_key or "").strip()
-        if api_key:
-            headers["Authorization"] = f"Bearer {api_key}"
-        else:
-            logger.warning(
-                "⚠️ ITI_API_KEY is empty! Please configure ITI_API_KEY in your .env file."
-            )
-
         self.client = httpx.AsyncClient(
             base_url=settings.iti_base_url.rstrip("/"),
             headers=headers,
@@ -34,6 +28,7 @@ class ITIClient:
         )
 
     async def close(self) -> None:
+        """Closes the underlying httpx AsyncClient."""
         if self.client:
             await self.client.aclose()
             self.client = None
@@ -41,14 +36,16 @@ class ITIClient:
     async def send_chat_request(
         self, endpoint: str, payload: Dict[str, Any]
     ) -> Tuple[Dict[str, Any], int, float]:
+        """Sends request to ITI provider with exponential backoff retries."""
         if not self.client:
             await self.start()
 
-        max_attempts = max(3, settings.max_retries)
-        backoff_delay = 1.5
+        max_attempts = max(1, settings.max_retries)
+        backoff_delay = 1.0
         start_time = time.perf_counter()
         model_id = payload.get("model_id", "unknown")
         request_id = "pending"
+
         last_exception = None
 
         for attempt in range(1, max_attempts + 1):
@@ -59,6 +56,7 @@ class ITIClient:
                 if response.status_code == 200:
                     data = response.json()
                     request_id = data.get("request_id", f"req_{int(time.time())}")
+                    logger.info(f"FULL RAW ITI API RESPONSE TEXT: {response.text}")
                     log_request_metrics(
                         request_id=request_id,
                         endpoint=endpoint,
@@ -70,7 +68,7 @@ class ITIClient:
 
                 if response.status_code >= 500 or response.status_code == 429:
                     logger.warning(
-                        f"ITI API returned status {response.status_code} on attempt {attempt}/{max_attempts}. Retrying in {backoff_delay}s..."
+                        f"ITI API returned status {response.status_code} on attempt {attempt}/{max_attempts}."
                     )
                     if attempt < max_attempts:
                         await asyncio.sleep(backoff_delay)
@@ -96,18 +94,28 @@ class ITIClient:
                     latency_ms=latency_ms,
                 )
 
-                raise HTTPException(status_code=response.status_code, detail=error_msg)
+                raise HTTPException(
+                    status_code=response.status_code,
+                    detail=error_msg,
+                )
 
             except (httpx.TransportError, httpx.TimeoutException) as exc:
                 latency_ms = (time.perf_counter() - start_time) * 1000.0
                 last_exception = exc
                 logger.warning(
-                    f"Transport error on attempt {attempt}/{max_attempts}: {exc}. Retrying in {backoff_delay}s..."
+                    f"Network error calling ITI API on attempt {attempt}/{max_attempts}: {exc}"
                 )
                 if attempt < max_attempts:
                     await asyncio.sleep(backoff_delay)
                     backoff_delay *= 2.0
                 else:
+                    log_request_metrics(
+                        request_id=request_id,
+                        endpoint=endpoint,
+                        model=model_id,
+                        status_code=504,
+                        latency_ms=latency_ms,
+                    )
                     raise HTTPException(
                         status_code=504,
                         detail=f"Gateway timeout contacting upstream ITI service: {exc}",

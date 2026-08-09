@@ -3,6 +3,7 @@
 import logging
 import sys
 
+# Configure standard logger
 logger = logging.getLogger("enterprise_ai_proxy")
 logger.setLevel(logging.INFO)
 
@@ -22,7 +23,10 @@ def log_request_metrics(
     status_code: int,
     latency_ms: float,
 ) -> None:
-    """Logs structured metrics for API requests."""
+    """Logs structured metrics for API requests.
+
+    Guarantees no authorization tokens, API keys, or image payloads are included.
+    """
     logger.info(
         f"RequestID={request_id} | Endpoint={endpoint} | Model={model} | "
         f"Status={status_code} | Latency={latency_ms:.2f}ms"

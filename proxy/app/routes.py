@@ -121,6 +121,7 @@ async def create_chat_completion(
         except Exception:
             tool_args = {}
 
+        # Handle container wrapper arguments
         if "toolName" in tool_args:
             sub_name = tool_args.get("toolName")
             sub_params = tool_args.get("toolParameters", {})

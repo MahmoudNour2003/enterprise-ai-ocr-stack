@@ -25,6 +25,8 @@ class OpenAIChatMessage(BaseModel):
     role: str
     content: Optional[Union[str, List[Union[ContentPart, Dict[str, Any]]]]] = ""
     name: Optional[str] = None
+    tool_calls: Optional[List[Dict[str, Any]]] = None
+    tool_call_id: Optional[str] = None
 
 
 class OpenAIChatCompletionRequest(BaseModel):
@@ -32,6 +34,7 @@ class OpenAIChatCompletionRequest(BaseModel):
 
     model: str
     messages: Optional[List[OpenAIChatMessage]] = Field(default_factory=list)
+    tools: Optional[List[Dict[str, Any]]] = None
     prompt: Optional[Union[str, List[Any]]] = None
     input: Optional[Union[str, List[Any]]] = None
     instructions: Optional[str] = None
@@ -56,12 +59,28 @@ class OpenAIModelListResponse(BaseModel):
     data: List[OpenAIModelObject]
 
 
-# POST /v1/chat/completions & /v1/responses response schemas
+# POST /v1/chat/completions response schemas
+class OpenAIFunctionCall(BaseModel):
+    """Function call detail in tool call."""
+
+    name: str
+    arguments: str
+
+
+class OpenAIToolCall(BaseModel):
+    """Tool call item schema."""
+
+    id: str
+    type: str = "function"
+    function: OpenAIFunctionCall
+
+
 class OpenAIChatMessageResponse(BaseModel):
     """Message output schema within completion choice."""
 
     role: str = "assistant"
-    content: str
+    content: Optional[str] = None
+    tool_calls: Optional[List[OpenAIToolCall]] = None
 
 
 class OpenAIChatChoice(BaseModel):

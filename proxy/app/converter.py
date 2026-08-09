@@ -3,8 +3,7 @@
 import json
 import time
 import uuid
-import re
-from typing import Any, Dict, List, Tuple, Optional
+from typing import Any, Dict, List, Tuple
 from app.models import (
     OpenAIChatCompletionRequest,
     OpenAIChatCompletionResponse,
@@ -246,6 +245,9 @@ def clean_json_output_text(text: str) -> str:
     return stripped
 
 
+import re
+
+
 def try_parse_tool_call(output_text: str) -> Tuple[bool, Optional[OpenAIToolCall]]:
     """Attempts to parse output_text as a JSON tool call, extracting valid JSON objects even if reasoning/tags are present."""
     if not output_text:
@@ -267,6 +269,7 @@ def try_parse_tool_call(output_text: str) -> Tuple[bool, Optional[OpenAIToolCall
     except Exception:
         pass
 
+    # Regex search for {"function": "...", ...} or {"name": "...", ...}
     match = re.search(
         r'\{\s*"(?:function|name|tool)"\s*:\s*"([^"]+)"\s*(?:,\s*"(?:arguments|parameters|args)"\s*:\s*(\{.*?\}|"[^"]*"))?\s*\}',
         output_text,
@@ -287,6 +290,7 @@ def try_parse_tool_call(output_text: str) -> Tuple[bool, Optional[OpenAIToolCall
             function=OpenAIFunctionCall(name=func_name, arguments=args_str),
         )
 
+    # Fallback: Check if model outputted a SELECT SQL block inside ```sql ... ```
     sql_match = re.search(r'```(?:sql)?\s*(SELECT\s+.*?)```', output_text, re.IGNORECASE | re.DOTALL)
     if not sql_match:
         sql_match = re.search(r'\b(SELECT\s+[\s\S]+?;)', output_text, re.IGNORECASE)
@@ -390,6 +394,7 @@ def convert_iti_to_openai_response(
     else:
         final_tool_calls = None
 
+    # Override function name and format arguments for n8n container tools (like SQL_MCP_Client_Tools)
     if final_tool_calls and requested_tools and len(requested_tools) > 0:
         n8n_tool_name = requested_tools[0].get("function", {}).get("name")
         if n8n_tool_name:
