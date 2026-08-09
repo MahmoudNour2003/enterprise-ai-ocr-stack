@@ -5,8 +5,8 @@ import time
 from typing import Any, Dict, Optional, Tuple
 import httpx
 from fastapi import HTTPException
-from proxy.app.settings import settings
-from proxy.app.utils import logger, log_request_metrics
+from app.settings import settings
+from app.utils import logger, log_request_metrics
 
 
 class ITIClient:
@@ -44,7 +44,6 @@ class ITIClient:
         if not self.client:
             await self.start()
 
-        # Guarantee at least 3 retry attempts for remote ITI server stability
         max_attempts = max(3, settings.max_retries)
         backoff_delay = 1.5
         start_time = time.perf_counter()
