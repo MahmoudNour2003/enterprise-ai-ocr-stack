@@ -5,14 +5,11 @@
 
 echo "🚀 Starting all 4 Enterprise Stack services natively without Docker..."
 
-# 1. Kill old running instances on ports 8080, 8000, 3001, 5678
-echo "🧹 Cleaning up old service processes..."
-fuser -k 8080/tcp || true
-fuser -k 8000/tcp || true
-fuser -k 3001/tcp || true
-fuser -k 5678/tcp || true
+# 1. Stop all existing running service instances cleanly
+chmod +x ./stop_all_services.sh 2>/dev/null || true
+./stop_all_services.sh 2>/dev/null || true
 
-# Fix n8n encryption key mismatch error
+# Fix n8n encryption key mismatch error if cached config exists
 rm -f ~/.n8n/config || true
 rm -f /teamspace/studios/this_studio/.n8n/config || true
 
