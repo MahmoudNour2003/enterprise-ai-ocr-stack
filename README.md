@@ -26,8 +26,11 @@ git pull origin main
 # Grant Executable Permissions
 chmod +x *.sh
 
-# Enable NVIDIA GPU Mode
+# Enable GPU Mode (If GPU attached):
 ./enable_gpu_ocr.sh
+
+# OR Enable CPU Mode (If no GPU attached):
+./enable_cpu_ocr.sh
 
 # Start All Services
 ./start_all_services.sh
@@ -40,7 +43,7 @@ chmod +x *.sh
 
 ## 🏥 Service Health Endpoints
 
-- 📷 **PaddleOCR GPU Service**: `http://localhost:8080/health` (`"gpu_enabled": true`)
+- 📷 **PaddleOCR Service**: `http://localhost:8080/health`
 - 🗄️ **SQL MCP Server**: `http://localhost:3001/health` (`"databaseConnected": true`)
 - 🤖 **Enterprise AI Proxy**: `http://localhost:8000/health`
 - ⚡ **n8n Workflow Dashboard**: `http://localhost:5678`
