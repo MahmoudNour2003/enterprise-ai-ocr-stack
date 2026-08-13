@@ -6,6 +6,7 @@
         "httpMethod": "POST",
         "path": "d11ede0e-9d6f-4b45-8ba7-bd833c8df652",
         "responseMode": "responseNode",
+        "authentication": "headerAuth",
         "options": {}
       },
       "type": "n8n-nodes-base.webhook",
@@ -17,7 +18,13 @@
       "id": "501a8482-73cd-4bfa-881e-84e5896d5a12",
       "name": "Webhook",
       "webhookId": "d11ede0e-9d6f-4b45-8ba7-bd833c8df652",
-      "executeOnce": false
+      "executeOnce": false,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "stackApiKeyHeaderAuth",
+          "name": "Stack API Key Header Auth"
+        }
+      }
     },
     {
       "parameters": {

@@ -6,6 +6,7 @@
         "httpMethod": "POST",
         "path": "ai-chat",
         "responseMode": "responseNode",
+        "authentication": "headerAuth",
         "options": {}
       },
       "type": "n8n-nodes-base.webhook",
@@ -15,7 +16,13 @@
         0
       ],
       "id": "webhook-ai-chat-001",
-      "name": "Webhook AI Chat"
+      "name": "Webhook AI Chat",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "stackApiKeyHeaderAuth",
+          "name": "Stack API Key Header Auth"
+        }
+      }
     },
     {
       "parameters": {
