@@ -106,7 +106,12 @@ export async function executeQueryWithContext<T = Record<string, unknown>>(
     let finalSql = sql;
     const activeUserId = (userId !== undefined && userId !== null) ? userId : 5;
     logger.info('Executing atomic batch with SESSION_CONTEXT for activeUserId', { activeUserId });
-    finalSql = `EXEC sp_set_session_context @key = N'UserId', @value = ${activeUserId};\n${sql}`;
+    
+    if (activeUserId === 1) {
+      finalSql = `EXEC sp_set_session_context @key = N'UserId', @value = ${activeUserId};\nEXEC sp_set_session_context @key = N'IsAdmin', @value = 1;\n${sql}`;
+    } else {
+      finalSql = `EXEC sp_set_session_context @key = N'UserId', @value = ${activeUserId};\n${sql}`;
+    }
 
     const result = await request.query<T>(finalSql);
     const executionTimeMs = Date.now() - startTime;
